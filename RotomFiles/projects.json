@@ -1,0 +1,18 @@
+{
+    "Projects" : [
+        {
+            "rom"   : "rom.nds",
+            "name"  : "Example Platinum",
+            "folder": "PtExample",
+            "game"  : "Pt",
+            "version" : 0.1
+        },
+        {
+            "rom"   : "rom.nds",
+            "name"  : "Example DP",
+            "folder": "DPExample",
+            "game"  : "DP",
+            "version" : 0.1
+        }
+    ]
+}
