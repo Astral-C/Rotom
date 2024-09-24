@@ -1,10 +1,12 @@
 import os
 import json
+import text
 import ndspy.rom
 import ndspy.narc
 import rotom_map as Map
-from rotom_map import RotomMap
+from rotom_map import RotomMap, RotomMapHeader
 import PalkiaPy
+import bStream
 
 class RotomEditor():
     def __init__(self):
@@ -19,6 +21,7 @@ class RotomEditor():
         self.currentRom = None
         self.land_data = None
         self.currentMap = None
+        self.maps = {}
 
     def openProject(self, projectName):
         #TODO: Clean this up.
@@ -34,16 +37,44 @@ class RotomEditor():
 
             Map.buildModelNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/build_model/build_model.narc'))
             Map.mapTexNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/areadata/area_map_tex/map_tex_set.narc'))
-            Map.defaultMapTex = PalkiaPy.loadNSBTX(data=bytes(Map.mapTexNarc.files[6]))
+            #Map.defaultMapTex = PalkiaPy.loadNSBTX(data=bytes(Map.mapTexNarc.files[6]))
             
             # The path changes slightly between DP and Pt. 
             # IDK if I will ever implement hgss/bw/bw2 but if I do this will have to change
             self.fieldDataPath = 'fielddata/land_data/land_data' + ('_release' if (self.currentProject["game"] == 'DP') else '') +'.narc'
             
-            self.land_data = ndspy.narc.NARC(self.currentRom.getFileByName(self.fieldDataPath))
+            landData = ndspy.narc.NARC(self.currentRom.getFileByName(self.fieldDataPath))
+            matrixArc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/mapmatrix/map_matrix.narc'))
+
+            textArc = ndspy.narc.NARC(self.currentRom.getFileByName('msgdata/pl_msg.narc'))
+            locationNames = text.decodeList(textArc.files[433])
+
+            arm9 = bStream.bStream(data=self.currentRom.arm9)
+
+            arm9.seek(0xE601C)
+
+            mapHeaders = []
+            while(True):
+                header = RotomMapHeader(arm9) # these are zone info structs
+                if(header.placeNameID > len(locationNames)):
+                    break
+
+                mapHeaders.append(header)
+            
+            
+            for location in locationNames:
+                print(f"Loading Map for Zone {location}")
+                zoneHeaders = []
+                for header in mapHeaders:
+                    if(locationNames[header.placeNameID] == location):
+                        zoneHeaders.append(header)
+                self.maps[location] = RotomMap(location, zoneHeaders, landData, matrixArc)
+
+
+
 
             #First map is Twinleaf Town for dppt, load it by default
-            self.currentMap = RotomMap(self.land_data.files[0], 0)
+            #self.currentMap = RotomMap(self.land_data.files[0], 0)
 
             return True
         else:
