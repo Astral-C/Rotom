@@ -3,34 +3,52 @@ from __future__ import absolute_import
 
 import sys
 import math
-import pygame
 from OpenGL.GL import *
-from OpenGL.GLU import *
+from camera import OrbitCamera as Camera
 from rotom_editor import RotomEditor
-from imgui.integrations.pygame import PygameRenderer
+from imgui.integrations.glfw import GlfwRenderer
+from pyrr import matrix44, Matrix44, Vector4, Vector3, Quaternion
 import imgui
+import glfw
 
+import PalkiaPy
 
-# This entire file is garbo and temporary
-# It only exists as a way for me to get more familliar with how dppt maps work
-# Once I figure all that stuff out ill rework this to be less garbage or start from scratch
-# for now though, enjoy the garbo
+def on_resize(window, w, h):
+    glViewport(0, 0, w, h)
 
 def main():
-    pygame.init()
-    size = 800, 600
+    size = 1280, 720
 
-    display = pygame.display.set_mode(size, pygame.DOUBLEBUF | pygame.OPENGL)
-    pygame.display.set_caption("Rotom")
+    cam = Camera(distance=1000.0, pitch=30.0, yaw=45.0)
+
+    # main
+    if(not glfw.init()):
+        raise Exception("Couldn't init GLFW")
+
+
+    glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 4)
+    glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 6)
+    glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+    glfw.window_hint(glfw.OPENGL_DEBUG_CONTEXT, glfw.TRUE)
+    glfw.window_hint(glfw.DEPTH_BITS, 24)
+    glfw.window_hint(glfw.SAMPLES, 4)
+
+    window = glfw.create_window(1280, 720, "Rotom", None, None)
+    if(not window):
+        glfw.terminate()
+        raise Exception("Couldn't setup window")
+
+
+    glfw.make_context_current(window)
+
+    glfw.set_framebuffer_size_callback(window, on_resize)
+
+    PalkiaPy.init()
 
     editor = RotomEditor()
     if(not editor.openProject(editor.projects[0]["name"])):
         print("Error Opening Project")
         exit(1)
-    
-    glEnable(GL_DEPTH_TEST)
-    gluPerspective(45, (size[0]/size[1]), 0.1, 200.0)
-    glTranslatef(-15.0, 15.0, -50)
 
     #bad
     mapID = 0
@@ -44,55 +62,62 @@ def main():
     currentObject = None
     tile = None
 
+
     if(editor.getCurrentMap().objectCount > 0):
         currentObject = editor.getCurrentMap().MapObjects[0]
 
     imgui.create_context()
-    impl = PygameRenderer()
+    impl = GlfwRenderer(window)
 
     io = imgui.get_io()
     io.display_size = size
 
-    while 1:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
+    while(not glfw.window_should_close(window)):
+        glfw.poll_events()
+        impl.process_inputs()
 
-            impl.process_event(event)
+        if glfw.get_key(window, glfw.KEY_W) == glfw.PRESS:
+            cam.rotate(1.0, 0.0)
+        if glfw.get_key(window, glfw.KEY_S) == glfw.PRESS:
+            cam.rotate(-1.0, 0.0)
+        if glfw.get_key(window, glfw.KEY_A) == glfw.PRESS:
+            cam.rotate(0.0, 1.0)
+        if glfw.get_key(window, glfw.KEY_D) == glfw.PRESS:
+            cam.rotate(0.0, -1.0)
+        
+        if glfw.get_key(window, glfw.KEY_Q) == glfw.PRESS:
+            if glfw.get_key(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS:
+                cam.target[1] += 1.0
+                cam.update()
+            else:
+                cam.zoom(5)
+        if glfw.get_key(window, glfw.KEY_E) == glfw.PRESS:
+            if glfw.get_key(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS:
+                cam.target[1] -= 1.0
+                cam.update()
+            else:
+                cam.zoom(-5)
 
         imgui.new_frame()
-        glClearColor(0, 0, 0, 0)
+
+        glEnable(GL_DEPTH_TEST)
+        glClearColor(0.25, 0.3, 0.4, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        #Gross
-        glPointSize(8)
-        glBegin(GL_POINTS)
-        t = 0
-        for obj in editor.getCurrentMap().MapObjects:
-            glColor3f(255, 255, 255)
-            if(t == objectID):
-                glColor3f(100, 0, 100)
-            glVertex3f(obj.x+16, -(obj.z+16), 2)
-            t += 1
-        glEnd()
-
-        #Also Very Gross
-        glPointSize(10)
-        glBegin(GL_POINTS)
-        for y in range(0, 32):
-            for x in range(0, 32):
-                if(editor.getCurrentMap().getTilePermissions(x, y)[1] == 0x00):
-                    if(editor.getCurrentMap().getTilePermissions(x, y)[0] == 0xA9):
-                        glColor3f(0, 0, 100)
-                    else:
-                        glColor3f(0, 100, 0)
-                else:
-                    glColor3f(100, 0, 0)
-
-                glVertex3f(x, -y, 2)
-        glEnd()
-
+        width, height = glfw.get_framebuffer_size(window)
         
+        glViewport(0, 0, width, height)
+        imgui.get_io().display_size = width, height
+
+        proj = matrix44.create_perspective_projection_matrix(45.0, width/height, 0.1, 100000.0)
+
+        PalkiaPy.setCamera(
+            proj.ravel().tolist(),
+            cam.view_matrix.ravel().tolist()
+        )
+
+        editor.getCurrentMap().draw()
+
         imgui.begin("Project Settings")
         projectChanged, projectID = imgui.listbox("", projectID, projectNames)
         if(projectChanged):
@@ -130,9 +155,9 @@ def main():
 
         imgui.render()
         impl.render(imgui.get_draw_data())
-
-        pygame.display.flip()
-        pygame.time.wait(10)
+        glfw.swap_buffers(window)
+    
+    glfw.terminate()
 
 if __name__ == "__main__":
     main()

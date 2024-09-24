@@ -2,7 +2,9 @@ import os
 import json
 import ndspy.rom
 import ndspy.narc
+import rotom_map as Map
 from rotom_map import RotomMap
+import PalkiaPy
 
 class RotomEditor():
     def __init__(self):
@@ -30,6 +32,10 @@ class RotomEditor():
                 os.path.join("RotomFiles", self.currentProject["folder"], self.currentProject["rom"])
             )
 
+            Map.buildModelNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/build_model/build_model.narc'))
+            Map.mapTexNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/areadata/area_map_tex/map_tex_set.narc'))
+            Map.defaultMapTex = PalkiaPy.loadNSBTX(data=bytes(Map.mapTexNarc.files[6]))
+            
             # The path changes slightly between DP and Pt. 
             # IDK if I will ever implement hgss/bw/bw2 but if I do this will have to change
             self.fieldDataPath = 'fielddata/land_data/land_data' + ('_release' if (self.currentProject["game"] == 'DP') else '') +'.narc'
