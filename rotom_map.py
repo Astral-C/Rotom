@@ -8,6 +8,7 @@ from pyrr import matrix44, Matrix44, Vector4, Vector3, Quaternion
 loadedModels = {}
 buildModelNarc = None
 mapTexNarc = None
+defaultMapTex = None
 
 mapTextures = {}
 
@@ -46,9 +47,23 @@ class RotomMapObject:
 
 		strm.fhandle.write(self.misc)
 
+class RotomAreaData:
+	def __init__(self, data):
+		stream = bStream.bStream(data=data)
+		self.buildingSet = stream.readUInt16()
+		self.mapTileset = stream.readUInt16()
+		self.unknown = stream.readUInt16()
+		self.lightType = stream.readUInt16()
+		
+
 class RotomMapHeader:
-	def __init__(self, stream):
+	def __init__(self, stream, areaDataArc):
 		self.areaID = stream.readUInt8()
+		print(f"Loading Area {self.areaID}")
+		if(self.areaID < len(areaDataArc.files)):
+			self.areData = RotomAreaData(areaDataArc.files[self.areaID])
+		else:
+			self.areaID = None
 		self.moveModelID = stream.readUInt8()
 		self.matrixID = stream.readUInt16()
 		self.scriptID = stream.readUInt16()
@@ -98,7 +113,8 @@ class RotomMapChunk:
 
 	def setMapTextureSet(self, textureset):
 		if(self.MapModel != None):
-			mapTextures[textureset] = PalkiaPy.loadNSBTX(data=bytes(mapTexNarc.files[textureset]))
+			if(textureset not in mapTextures):
+				mapTextures[textureset] = PalkiaPy.loadNSBTX(data=bytes(mapTexNarc.files[textureset]))
 			self.MapModel.attachNSBTX(mapTextures[textureset])
 
 	def getTilePermissions(self, x, y):
@@ -114,10 +130,10 @@ class RotomMapChunk:
 
 	def draw(self, cx=0, cy=0, ch=0):
 		if(self.MapModel != None):
-			self.MapModel.render(matrix44.create_from_translation([cx * 512, cy * 512, ch]).ravel().tolist())
+			self.MapModel.render(matrix44.create_from_translation([cx * 512, ch * 8, cy * 512]).ravel().tolist())
 		for obj in self.MapObjects:
 			if(obj.modelID in loadedModels):
-				loadedModels[obj.modelID].render(matrix44.create_from_translation([(cx * 512) + obj.x, (cy * 512) + obj.y, obj.z]).ravel().tolist())
+				loadedModels[obj.modelID].render(matrix44.create_from_translation([(cx * 512) + obj.x, obj.y, (cy * 512) + obj.z]).ravel().tolist())
 
 	def saveChunk(self, data):
 		mapData = bStream.bStream(data=data)
@@ -137,12 +153,12 @@ class RotomMapChunk:
 			
 		return bytearray(mapData.fhandle.getbuffer())
 
-class RotomMapMatrix:
-	def __init__(self):
-		pass
-
-	def Read(self, data, headers, mapChunks, fieldData):
+class RotomMap: #map matrix
+	def __init__(self, data, mapID, headers, fieldData, zoneHeaders=None):
+		self.mapHeaders = {}
+		self.mapChunks = {}
 		stream = bStream.bStream(data=data)
+		self.currentPlaceName = ""
 		self.width = stream.readUInt8()
 		self.height = stream.readUInt8()
 		self.hasHeader = stream.readUInt8()
@@ -164,38 +180,26 @@ class RotomMapMatrix:
 				for x in range(self.width):
 					self.altitudes[y][x] = stream.readUInt8()
 
-		chunks = {}
 		for y in range(self.height):
 			for x in range(self.width):
 				self.chunkIDs[y][x] = stream.readUInt16()
 
 				if(self.chunkIDs[y][x] != 0xFFFF):
-					if(self.chunkIDs[y][x] not in mapChunks):
-						print(f"Loading Map Chunk {self.chunkIDs[y][x]}")
-						chunks[self.chunkIDs[y][x]] = RotomMapChunk(fieldData.files[self.chunkIDs[y][x]])
-						if(self.hasHeader and self.headers[y][x] != 0xFFFF and self.headers[y][x] < len(headers)):
-							chunks[self.chunkIDs[y][x]].setMapTextureSet(headers[self.headers[y][x]].areaID)
+					if(self.chunkIDs[y][x] not in self.mapChunks and self.hasHeader and headers[self.headers[y][x]].placeNameID == mapID):
+						self.mapChunks[self.chunkIDs[y][x]] = RotomMapChunk(fieldData.files[self.chunkIDs[y][x]])
+						if(self.hasHeader and self.headers[y][x] != 0xFFFF):
+							self.mapChunks[self.chunkIDs[y][x]].setMapTextureSet(headers[self.headers[y][x]].areData.mapTileset)
+							self.mapHeaders[self.headers[y][x]] = headers[self.headers[y][x]]
+						else:
+							self.mapChunks[self.chunkIDs[y][x]].setMapTextureSet(headers[mapID].areData.mapTileset)
+							self.mapHeaders[self.headers[y][x]] = headers[mapID]
+					elif(self.chunkIDs[y][x] not in self.mapChunks and not self.hasHeader and zoneHeaders):
+						self.mapChunks[self.chunkIDs[y][x]] = RotomMapChunk(fieldData.files[self.chunkIDs[y][x]])
+						self.mapChunks[self.chunkIDs[y][x]].setMapTextureSet(zoneHeaders[-1].areData.mapTileset)
+						self.mapHeaders[self.headers[y][x]] = zoneHeaders[-1]						
 
-		return chunks
-
-	def draw(self, mapChunks):
+	def draw(self, location):
 		for y in range(self.height):
 			for x in range(self.width):
-				if(self.chunkIDs[y][x] != 0xFFFF):
-					mapChunks[self.chunkIDs[y][x]].draw(x, y, self.altitudes[y][x])
-
-class RotomMap:
-	def __init__(self, data, headers, fieldDataNarc, matrixDataNarc):
-		self.mapChunkHeaders = headers
-		self.mapChunks = {}
-		self.mapMatrices = {}
-		for header in headers:
-			if(header.matrixID not in self.mapMatrices):
-				self.mapMatrices[header.matrixID] = RotomMapMatrix()
-				chunks = self.mapMatrices[header.matrixID].Read(matrixDataNarc.files[header.matrixID], headers, self.mapChunks, fieldDataNarc)
-
-				self.mapChunks.update(chunks)
-
-	def draw(self):
-		for matrix in self.mapMatrices:
-			self.mapMatrices[matrix].draw(self.mapChunks)
+				if(self.chunkIDs[y][x] != 0xFFFF and self.chunkIDs[y][x] in self.mapChunks):
+					self.mapChunks[self.chunkIDs[y][x]].draw(x, y, self.altitudes[y][x])

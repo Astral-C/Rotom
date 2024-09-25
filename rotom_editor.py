@@ -37,40 +37,43 @@ class RotomEditor():
 
             Map.buildModelNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/build_model/build_model.narc'))
             Map.mapTexNarc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/areadata/area_map_tex/map_tex_set.narc'))
-            #Map.defaultMapTex = PalkiaPy.loadNSBTX(data=bytes(Map.mapTexNarc.files[6]))
+            Map.defaultMapTex = PalkiaPy.loadNSBTX(data=bytes(Map.mapTexNarc.files[6]))
             
             # The path changes slightly between DP and Pt. 
             # IDK if I will ever implement hgss/bw/bw2 but if I do this will have to change
             self.fieldDataPath = 'fielddata/land_data/land_data' + ('_release' if (self.currentProject["game"] == 'DP') else '') +'.narc'
             
-            landData = ndspy.narc.NARC(self.currentRom.getFileByName(self.fieldDataPath))
-            matrixArc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/mapmatrix/map_matrix.narc'))
+            self.landData = ndspy.narc.NARC(self.currentRom.getFileByName(self.fieldDataPath))
+            self.matrixArc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/mapmatrix/map_matrix.narc'))
+            self.areaDataArc = ndspy.narc.NARC(self.currentRom.getFileByName('fielddata/areadata/area_data.narc'))
 
             textArc = ndspy.narc.NARC(self.currentRom.getFileByName('msgdata/pl_msg.narc'))
-            locationNames = text.decodeList(textArc.files[433])
+            self.locationNames = text.decodeList(textArc.files[433])
 
             arm9 = bStream.bStream(data=self.currentRom.arm9)
 
             arm9.seek(0xE601C)
 
-            mapHeaders = []
-            while(True):
-                header = RotomMapHeader(arm9) # these are zone info structs
-                if(header.placeNameID > len(locationNames)):
+            self.mapHeaders = []
+            while(500):
+                header = RotomMapHeader(arm9, self.areaDataArc) # these are zone info structs
+                if(header.placeNameID > len(self.locationNames)):
                     break
 
-                mapHeaders.append(header)
+                self.mapHeaders.append(header)
             
-            
-            for location in locationNames:
-                print(f"Loading Map for Zone {location}")
-                zoneHeaders = []
-                for header in mapHeaders:
-                    if(locationNames[header.placeNameID] == location):
-                        zoneHeaders.append(header)
-                self.maps[location] = RotomMap(location, zoneHeaders, landData, matrixArc)
 
+            location = "Route 201"
 
+            self.mapID = self.locationNames.index(location)
+            self.currentMapMatries = []
+            # find the map matrix used for this location
+            for header in self.mapHeaders:
+                if(header.placeNameID == self.locationNames.index(location) and header.matrixID not in self.currentMapMatries):
+                    self.currentMapMatries.append(header.matrixID)
+                    print(f"{location} has matrix {header.matrixID}")
+
+            self.currentMap = RotomMap(self.matrixArc.files[self.currentMapMatries[0]], self.mapID, self.mapHeaders, self.landData)
 
 
             #First map is Twinleaf Town for dppt, load it by default
@@ -80,8 +83,26 @@ class RotomEditor():
         else:
             return False
 
-    def setCurrentMap(self, mapID):
-        self.currentMap = RotomMap(self.land_data.files[mapID], mapID)
+    def setCurrentMatrix(self, idx):
+        zoneHeaders = []
+        for header in self.mapHeaders:
+                if(header.placeNameID == self.mapID and header.matrixID not in self.currentMapMatries):
+                    zoneHeaders.append(header)
+        self.currentMap = RotomMap(self.matrixArc.files[self.currentMapMatries[idx]], self.mapID, self.mapHeaders, self.landData, zoneHeaders)
+
+    def setCurrentMap(self, name):
+        self.mapID = self.locationNames.index(name)
+        self.currentMapMatries = []
+        self.currentMapHeader = None
+        zoneHeaders = []
+        # find the map matrix used for this location
+        for header in self.mapHeaders:
+                if(header.placeNameID == self.locationNames.index(name) and header.matrixID not in self.currentMapMatries):
+                    self.currentMapMatries.append(header.matrixID)
+                    zoneHeaders.append(header)
+                    print(f"{name} has matrix {header.matrixID}")
+
+        self.currentMap = RotomMap(self.matrixArc.files[self.currentMapMatries[0]], self.mapID, self.mapHeaders, self.landData, zoneHeaders)
 
     def saveCurrentMap(self):
         self.land_data.files[self.currentMap.id] = self.currentMap.saveMap(self.land_data.files[self.currentMap.id])
