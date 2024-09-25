@@ -195,9 +195,9 @@ class RotomMap: #map matrix
 							self.mapHeaders[self.headers[y][x]] = headers[mapID]
 					elif(self.chunkIDs[y][x] not in self.mapChunks and not self.hasHeader and zoneHeaders):
 						self.mapChunks[self.chunkIDs[y][x]] = RotomMapChunk(fieldData.files[self.chunkIDs[y][x]])
-						self.mapChunks[self.chunkIDs[y][x]].setMapTextureSet(zoneHeaders[-1].areData.mapTileset)
-						self.mapHeaders[self.headers[y][x]] = zoneHeaders[-1]						
-
+						for header in zoneHeaders:
+							self.mapChunks[self.chunkIDs[y][x]].setMapTextureSet(header.areData.mapTileset)
+						
 	def draw(self, location):
 		for y in range(self.height):
 			for x in range(self.width):
