@@ -83,11 +83,18 @@ class RotomEditor():
         else:
             return False
 
-    def setCurrentMatrix(self, idx):
+    def setCurrentMatrix(self, name, idx):
+        self.mapID = self.locationNames.index(name)
+        self.currentMapMatries = []
+        self.currentMapHeader = None
         zoneHeaders = []
+        # find the map matrix used for this location
         for header in self.mapHeaders:
-                if(header.placeNameID == self.mapID and header.matrixID not in self.currentMapMatries):
+                if(header.placeNameID == self.locationNames.index(name) and header.matrixID not in self.currentMapMatries):
+                    self.currentMapMatries.append(header.matrixID)
                     zoneHeaders.append(header)
+                    print(f"{name} has matrix {header.matrixID}")
+
         self.currentMap = RotomMap(self.matrixArc.files[self.currentMapMatries[idx]], self.mapID, self.mapHeaders, self.landData, zoneHeaders)
 
     def setCurrentMap(self, name):

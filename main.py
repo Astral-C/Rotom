@@ -131,7 +131,7 @@ def main():
         imgui.text("Current Map Matrix")
         changed, currentObject = imgui.combo("##mapmatrix", currentObject, [str(m) for m in editor.currentMapMatries])
         if(changed):
-            editor.setCurrentMatrix(currentObject)
+            editor.setCurrentMatrix(editor.locationNames[location], currentObject)
 
         imgui.end()
 
